@@ -24,7 +24,7 @@ client.once(Events.ClientReady, () => {
     console.log(`Bot conectado: ${client.user.tag}`);
 });
 
-function criarMenus(userId) {
+function criarMenusEtapa1(userId) {
     const pistao = new StringSelectMenuBuilder()
         .setCustomId(`pistao_${userId}`)
         .setPlaceholder('Selecione o pistão')
@@ -62,6 +62,21 @@ function criarMenus(userId) {
             { label: 'Não', value: 'Não' }
         );
 
+    const proxima = new ButtonBuilder()
+        .setCustomId(`proxima_${userId}`)
+        .setLabel('Próxima Etapa')
+        .setStyle(ButtonStyle.Primary);
+
+    return [
+        new ActionRowBuilder().addComponents(pistao),
+        new ActionRowBuilder().addComponents(comando),
+        new ActionRowBuilder().addComponents(cabecote),
+        new ActionRowBuilder().addComponents(intake),
+        new ActionRowBuilder().addComponents(proxima)
+    ];
+}
+
+function criarMenusEtapa2(userId) {
     const downpipe = new StringSelectMenuBuilder()
         .setCustomId(`downpipe_${userId}`)
         .setPlaceholder('Downpipe?')
@@ -84,10 +99,6 @@ function criarMenus(userId) {
         .setStyle(ButtonStyle.Success);
 
     return [
-        new ActionRowBuilder().addComponents(pistao),
-        new ActionRowBuilder().addComponents(comando),
-        new ActionRowBuilder().addComponents(cabecote),
-        new ActionRowBuilder().addComponents(intake),
         new ActionRowBuilder().addComponents(downpipe),
         new ActionRowBuilder().addComponents(booster),
         new ActionRowBuilder().addComponents(finalizar)
@@ -125,11 +136,9 @@ client.on(Events.InteractionCreate, async interaction => {
                 .setLabel('Cadastrar Acerto')
                 .setStyle(ButtonStyle.Primary);
 
-            const row = new ActionRowBuilder().addComponents(botao);
-
             await interaction.reply({
                 content: 'Clique no botão abaixo para cadastrar um acerto.',
-                components: [row]
+                components: [new ActionRowBuilder().addComponents(botao)]
             });
         }
     }
@@ -161,8 +170,43 @@ client.on(Events.InteractionCreate, async interaction => {
             await interaction.showModal(modal);
         }
 
+        if (interaction.customId.startsWith('proxima_')) {
+            const userId = interaction.customId.split('_')[1];
+
+            if (interaction.user.id !== userId) {
+                return interaction.reply({
+                    content: 'Esse cadastro pertence a outro usuário.',
+                    ephemeral: true
+                });
+            }
+
+            const dados = cadastros.get(userId);
+
+            if (!dados) {
+                return interaction.reply({
+                    content: 'Cadastro não encontrado. Comece novamente.',
+                    ephemeral: true
+                });
+            }
+
+            const obrigatoriosEtapa1 = ['pistao', 'comando', 'cabecote', 'intake'];
+            const faltando = obrigatoriosEtapa1.filter(campo => !dados[campo]);
+
+            if (faltando.length > 0) {
+                return interaction.reply({
+                    content: `Faltam campos: ${faltando.join(', ')}`,
+                    ephemeral: true
+                });
+            }
+
+            return interaction.update({
+                content: 'Etapa 2: selecione Downpipe e Booster. Depois finalize.',
+                components: criarMenusEtapa2(userId)
+            });
+        }
+
         if (interaction.customId.startsWith('finalizar_')) {
-            const userId = interaction.user.id;
+            const userId = interaction.customId.split('_')[1];
             const dados = cadastros.get(userId);
 
             if (!dados) {
@@ -203,7 +247,7 @@ client.on(Events.InteractionCreate, async interaction => {
 
             await enviarFicha(interaction, dados);
 
-            await interaction.reply({
+            return interaction.reply({
                 content: '✅ Ficha cadastrada com sucesso!',
                 ephemeral: true
             });
@@ -219,9 +263,9 @@ client.on(Events.InteractionCreate, async interaction => {
                 pressaoTurbina: interaction.fields.getTextInputValue('pressao_turbina')
             });
 
-            await interaction.reply({
-                content: 'Agora selecione as opções abaixo e clique em finalizar.',
-                components: criarMenus(userId),
+            return interaction.reply({
+                content: 'Etapa 1: selecione Pistão, Comando, Cabeçote e Intake.',
+                components: criarMenusEtapa1(userId),
                 ephemeral: true
             });
         }
@@ -241,7 +285,7 @@ client.on(Events.InteractionCreate, async interaction => {
 
             await enviarFicha(interaction, dados);
 
-            await interaction.reply({
+            return interaction.reply({
                 content: '✅ Ficha cadastrada com sucesso!',
                 ephemeral: true
             });
@@ -270,7 +314,7 @@ client.on(Events.InteractionCreate, async interaction => {
         dados[campo] = interaction.values[0];
         cadastros.set(userId, dados);
 
-        await interaction.reply({
+        return interaction.reply({
             content: `✅ ${campo} selecionado: ${interaction.values[0]}`,
             ephemeral: true
         });
